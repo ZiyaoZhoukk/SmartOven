@@ -1,0 +1,42 @@
+component dynamicThermalMass
+% Dynamic Thermal Mass
+% This block models internal energy storage in a thermal network. The rate
+% of temperature increase is proportional to the heat flow rate into the
+% material and inversely proportional to the mass and specific heat of the
+% material. The specific heat capacity can be set dynamically through an
+% external input.
+
+nodes
+    M = foundation.thermal.thermal; % Thermal conserving port
+end
+
+parameters
+    mass = {1, 'kg'}; % Mass
+end
+
+inputs
+    Cp = {900, 'J/(kg*K)'}; % Specific heat capacity (dynamic)
+end
+
+variables
+    T = {300, 'K'}; % Temperature
+    Q = {0, 'W'};   % Heat flow rate
+end
+
+branches
+    Q : M.Q -> *;
+end
+
+equations
+    % Ensure specific heat capacity and temperature are positive
+    assert(Cp > 0)
+    assert(T > 0, 'Temperature must be greater than absolute zero')
+
+    % Relate temperature to the thermal port
+    T == M.T;
+
+    % Heat balance equation
+    Q == mass * Cp * T.der;
+end
+
+end

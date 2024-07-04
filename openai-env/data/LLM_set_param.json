@@ -1,0 +1,14 @@
+{
+  "type of food": "whole chicken",
+  "heat_capacity": "2500",
+  "m": "1.5",
+  "water_content": "70",
+  "initial_temp": "4",
+  "A": "0.1",
+  "first_period": "1200",
+  "first_period_temp": "220",
+  "first_period_fan_speed": "2500",
+  "second_period": "2700",
+  "second_period_temp": "180",
+  "second_period_fan_speed": "1500"
+}
