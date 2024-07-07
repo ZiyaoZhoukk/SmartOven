@@ -8,7 +8,7 @@ def start_matlab_engine():
     print("\n===== Starting MATLAB engine... =====")
     eng = matlab.engine.start_matlab()
     print("===== MATLAB engine started =====\n")
-    eng.addpath('/Users/zhouziyao/Desktop/LLM_Smart_Oven/openai-env/matlab_src')
+    eng.addpath('/Users/zhouziyao/Desktop/LLM_Smart_Oven_Controll/openai-env/matlab_src')
     return eng
 
 def load_simulink_model(eng, model_name):
@@ -75,8 +75,24 @@ def run_simulation(eng, model_name, param_dict):
 
 def stop_simulation(eng, model_name):
     """停止仿真并关闭MATLAB引擎"""
+
+    # 等待仿真停止
+    while True:
+        status = eng.get_param(model_name, 'SimulationStatus')
+        if status == 'stopped':           
+            break
+        time.sleep(1)  # 等待 1 秒后再次检查
+    eng.run('move_outputs_to_workspace.m',nargout=0)
+    time_points=eng.workspace['time_points']
+    values=eng.workspace['values']
+    reduced_time_points = time_points[::60]
+    reduced_values = values[::60]
+    # 5. 将数组转换为长字符串
+    combined_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
+    print(combined_str)
+
+
     input("Press Enter to end the simulation and close MATLAB...")
-    eng.set_param(model_name, 'SimulationCommand', 'stop', nargout=0)
     eng.quit()
 
 def create_param_dict_from_LLM_answer(text):
