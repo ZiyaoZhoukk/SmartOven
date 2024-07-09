@@ -3,6 +3,23 @@ import re
 import json
 import time
 
+def create_param_dict_from_LLM_answer(text):
+    """从文本中提取并解析JSON部分"""
+    # 使用正则表达式提取JSON部分
+    json_match = re.search(r'{[\s\S]*}', text)
+
+    if json_match:
+        json_str = json_match.group(0)
+        # 将JSON字符串转换为Python字典
+        param_dict = json.loads(json_str)
+        print('\n======= Param dict created =======\n')
+        print(param_dict)  
+        print('\n')
+        return param_dict
+    else:
+        print("Failed to find JSON part...")
+        return None
+    
 def start_matlab_engine():
     """启动MATLAB引擎并加载所需路径"""
     print("\n===== Starting MATLAB engine... =====")
@@ -71,9 +88,9 @@ def run_simulation(eng, model_name, param_dict):
             break
 
         # 短暂暂停以防止系统高使用率
-        time.sleep(0.1)
+        time.sleep(0.05)
 
-def stop_simulation(eng, model_name):
+def stop_simulation_and_get_data(eng, model_name):
     """停止仿真并关闭MATLAB引擎"""
 
     # 等待仿真停止
@@ -81,37 +98,30 @@ def stop_simulation(eng, model_name):
         status = eng.get_param(model_name, 'SimulationStatus')
         if status == 'stopped':           
             break
-        time.sleep(1)  # 等待 1 秒后再次检查
-    eng.run('move_outputs_to_workspace.m',nargout=0)
+        time.sleep(1)  # 等待 1 秒后再次检查    
+    eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
     time_points=eng.workspace['time_points']
     values=eng.workspace['values']
+    #每60秒取样一次
     reduced_time_points = time_points[::60]
     reduced_values = values[::60]
-    # 5. 将数组转换为长字符串
-    combined_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
-    print(combined_str)
-
-
+    #将数组转换为长字符串for LLM
+    time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
+    # print(time_temp_str)
     input("Press Enter to end the simulation and close MATLAB...")
     eng.quit()
+    return time_temp_str
 
-def create_param_dict_from_LLM_answer(text):
-    """从文本中提取并解析JSON部分"""
-    # 使用正则表达式提取JSON部分
-    json_match = re.search(r'{[\s\S]*}', text)
-
-    if json_match:
-        json_str = json_match.group(0)
-        # 将JSON字符串转换为Python字典
-        param_dict = json.loads(json_str)
-        print('\n======= Param dict created =======\n')
-        print(param_dict)  
-        print('\n')
-        return param_dict
-    else:
-        print("Failed to find JSON part...")
-        return None
-
+def simulate(model_name,matlab_file,text):
+    param_dict = create_param_dict_from_LLM_answer(text)
+    if param_dict:
+        eng = start_matlab_engine()
+        load_simulink_model(eng, model_name)
+        run_matlab_file(eng, matlab_file)
+        set_parameters(eng, model_name, param_dict)
+        run_simulation(eng, model_name, param_dict)
+        return stop_simulation_and_get_data(eng, model_name)
+        
 def main():
     model_name = 'OvenSim'
     matlab_file = 'ovenSimConfig.m'
@@ -144,30 +154,22 @@ def main():
     json
     copy code
     {
-    "type of food": "whole chicken",
-    "heat_capacity": "2500",
+    "type of food": "chicken",
+    "heat_capacity": "2720",
     "m": "1.5",
-    "water_content": "70",
+    "water_content": "74",
     "initial_temp": "4",
-    "A": "0.1",
-    "first_period": "1200",
+    "A": "0.14",
+    "first_period": "1800",
     "first_period_temp": "220",
-    "first_period_fan_speed": "2500",
-    "second_period": "2700",
+    "first_period_fan_speed": "1200",
+    "second_period": "3600",
     "second_period_temp": "180",
-    "second_period_fan_speed": "1500"
+    "second_period_fan_speed": "1000"
     }
     This plan ensures that the chicken is cooked thoroughly with a crispy skin and juicy interior. Adjustments can be made based on specific oven performance and preferences.
     """
-
-    param_dict = create_param_dict_from_LLM_answer(text)
-    if param_dict:
-        eng = start_matlab_engine()
-        load_simulink_model(eng, model_name)
-        run_matlab_file(eng, matlab_file)
-        set_parameters(eng, model_name, param_dict)
-        run_simulation(eng, model_name, param_dict)
-        stop_simulation(eng, model_name)
+    simulate(model_name,matlab_file,text)
 
 if __name__ == "__main__":
     main()

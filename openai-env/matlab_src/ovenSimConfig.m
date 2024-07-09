@@ -9,8 +9,8 @@ epsilon_food=0.9; % emissivity factor of food
 epsilon_innerWalls=0.6;
 sigma=5.67e-8; % Steffan-Boltzmann constant
 h_innerwalls=20; % heat transfer coefficient of innerwalls
-radiation_loss_coefficient=0.24;
-convection_loss_coefficient=0.1;
+radiation_loss_coefficient=0.18;
+convection_loss_coefficient=0.07;
 
 
 % load,update and start simulink model
