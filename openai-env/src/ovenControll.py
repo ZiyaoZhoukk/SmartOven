@@ -3,7 +3,7 @@ import re
 import json
 import time
 
-def create_param_dict_from_LLM_answer(text):
+def create_param_dict_from_LLM_answer(text):#这个不对，应该用LLM那个文件里的
     """从文本中提取并解析JSON部分"""
     # 使用正则表达式提取JSON部分
     json_match = re.search(r'{[\s\S]*}', text)
@@ -90,6 +90,40 @@ def run_simulation(eng, model_name, param_dict):
         # 短暂暂停以防止系统高使用率
         time.sleep(0.05)
 
+def run_simulation_for_one_minute(eng, model_name, state_param_dict):
+    #1.应用状态并改烘烤操作（设置温度和风扇）2.跑一分钟，3.记录状态
+    #1.应用状态并改烘烤操作（设置温度和风扇）
+    if len(state_param_dict)<8:
+        #应用状态
+        eng.set_param(f"{model_name}/InnerWallsofOven", 'T', state_param_dict["oven_temp"], nargout=0)
+        eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', state_param_dict["oven_temp"], nargout=0)
+        eng.set_param(f"{model_name}/foodstuff", 'T', state_param_dict["food_temp"], nargout=0)
+        eng.set_param(f"{model_name}/initial_water_content", 'Value', state_param_dict["water_content"], nargout=0)
+        eng.set_param(f"{model_name}/initial_humidity", 'Value', state_param_dict["humidity"], nargout=0)
+        #更改烘烤操作
+        eng.set_param(f"{model_name}/fan_speed", 'Value', state_param_dict["fan_speed"], nargout=0)
+        eng.set_param(f"{model_name}/oven_temp1", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
+        eng.set_param(f"{model_name}/oven_temp2", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
+    if len(state_param_dict)>=8:#第一次一分钟
+        set_parameters(eng,model_name,state_param_dict)
+    
+    #2.跑一分钟
+    eng.set_param(model_name, 'StartTime', '0', 'StopTime', "60", nargout=0)
+    eng.set_param(model_name, 'SimulationCommand', 'start', nargout=0)
+    
+    #3.记录状态
+    record_state={}
+    record_state["oven_temp"] = eng.get_param(f"{model_name}/InnerWallsofOven", 'T')
+    record_state["oven_temp"] = eng.get_param(f"{model_name}/Dynamic_Thermal_Mass", 'T')
+    record_state["food_temp"] = eng.get_param(f"{model_name}/foodstuff", 'T')
+    #这两个改了但没测试
+    record_state["water_content"] = eng.get_param(f"{model_name}/water_contentd_display", 'Value')
+    record_state["humidity"] = eng.get_param(f"{model_name}/humidity_display", 'Value')
+    record_state["fan_speed"] = eng.get_param(f"{model_name}/fan_speed", 'Value')
+    record_state["heat_resistor_temp"] = eng.get_param(f"{model_name}/oven_temp1", 'Value')
+    record_state["heat_resistor_temp"] = eng.get_param(f"{model_name}/oven_temp2", 'Value')
+
+
 def stop_simulation_and_get_data(eng, model_name):
     """停止仿真并关闭MATLAB引擎"""
 
@@ -112,7 +146,9 @@ def stop_simulation_and_get_data(eng, model_name):
     eng.quit()
     return time_temp_str
 
+#================================================================================下面是几个总函数
 def simulate(model_name,matlab_file,text):
+    #根据GPT生成方案，跑一遍仿真并记录曲线
     param_dict = create_param_dict_from_LLM_answer(text)
     if param_dict:
         eng = start_matlab_engine()
@@ -121,8 +157,19 @@ def simulate(model_name,matlab_file,text):
         set_parameters(eng, model_name, param_dict)
         run_simulation(eng, model_name, param_dict)
         return stop_simulation_and_get_data(eng, model_name)
+    
+# def simulate_one_minute(model_name,matlab_file,LLM_generated_text,param_dict):可以直接在LLM_adjust里面写
+#     #跑一分钟仿真，用来模拟真实情形
+#     eng = start_matlab_engine()
+#     load_simulink_model(eng, model_name)
+#     # run_matlab_file(eng, matlab_file)
+#     run_simulation_for_one_minute()
+#     set_parameters(eng, model_name, param_dict)
+
+#     return stop_simulation_and_get_data(eng, model_name)
         
 def main():
+    #理论上不调用
     model_name = 'OvenSim'
     matlab_file = 'ovenSimConfig.m'
     text = """

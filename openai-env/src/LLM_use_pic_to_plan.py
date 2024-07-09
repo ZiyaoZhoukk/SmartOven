@@ -106,6 +106,7 @@ def main():
     
     print("\n==========Generated Roasting Plan JSON============\n")
     print(json_content)
+    return json_content
 
 if __name__ == "__main__":
     main()
