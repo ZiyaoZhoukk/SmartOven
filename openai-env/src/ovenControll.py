@@ -3,10 +3,10 @@ import re
 import json
 import time
 
-def create_param_dict_from_LLM_answer(text):#这个不对，应该用LLM那个文件里的
+def create_param_dict_from_LLM_answer(text):
     """从文本中提取并解析JSON部分"""
     # 使用正则表达式提取JSON部分
-    json_match = re.search(r'{[\s\S]*}', text)
+    json_match = re.search(r'(\{(?:[^\{\}]*\n){8,}[^\{\}]*\})', text)
 
     if json_match:
         json_str = json_match.group(0)
@@ -39,7 +39,13 @@ def run_matlab_file(eng, matlab_file):
     print("======= Running MATLAB file to configure basic parameters... =======\n")
     eng.run(matlab_file, nargout=0)
 
-def set_parameters(eng, model_name, param_dict):
+def matlab_initialization(model_name,matlab_file):
+    eng=start_matlab_engine()
+    load_simulink_model(eng,model_name)
+    run_matlab_file(eng,matlab_file)
+    return eng
+
+def set_complete_parameters(eng, model_name, param_dict):
     """设置模型参数"""
     print("======= Setting parameters from JSON... =======\n")
     # 设置烤箱温度
@@ -59,7 +65,7 @@ def set_parameters(eng, model_name, param_dict):
     eng.set_param(f"{model_name}/Convective_Heat_Transfer1", 'Area', param_dict["A"], nargout=0)
     eng.set_param(f"{model_name}/initial_water_content", 'Value', param_dict["water_content"], nargout=0)
 
-def run_simulation(eng, model_name, param_dict):
+def run_model_to_get_reference(eng, model_name, param_dict):
     """运行仿真并根据时间点修改参数"""
     change_time = float(param_dict["first_period"])
     stop_time = str(float(param_dict["first_period"]) + float(param_dict["second_period"]))
@@ -90,13 +96,12 @@ def run_simulation(eng, model_name, param_dict):
         # 短暂暂停以防止系统高使用率
         time.sleep(0.05)
 
-def run_simulation_for_one_minute(eng, model_name, state_param_dict):
-    #1.应用状态并改烘烤操作（设置温度和风扇）2.跑一分钟，3.记录状态
+def run_model_for_one_minute(eng, model_name, state_param_dict):
     #1.应用状态并改烘烤操作（设置温度和风扇）
     if len(state_param_dict)<8:
         #应用状态
-        eng.set_param(f"{model_name}/InnerWallsofOven", 'T', state_param_dict["oven_temp"], nargout=0)
-        eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', state_param_dict["oven_temp"], nargout=0)
+        eng.set_param(f"{model_name}/InnerWallsofOven", 'T', state_param_dict["oven_wall_temp"], nargout=0)
+        eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', state_param_dict["oven_air_temp"], nargout=0)
         eng.set_param(f"{model_name}/foodstuff", 'T', state_param_dict["food_temp"], nargout=0)
         eng.set_param(f"{model_name}/initial_water_content", 'Value', state_param_dict["water_content"], nargout=0)
         eng.set_param(f"{model_name}/initial_humidity", 'Value', state_param_dict["humidity"], nargout=0)
@@ -105,68 +110,62 @@ def run_simulation_for_one_minute(eng, model_name, state_param_dict):
         eng.set_param(f"{model_name}/oven_temp1", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
         eng.set_param(f"{model_name}/oven_temp2", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
     if len(state_param_dict)>=8:#第一次一分钟
-        set_parameters(eng,model_name,state_param_dict)
-    
+        set_complete_parameters(eng,model_name,state_param_dict)   
     #2.跑一分钟
     eng.set_param(model_name, 'StartTime', '0', 'StopTime', "60", nargout=0)
     eng.set_param(model_name, 'SimulationCommand', 'start', nargout=0)
-    
-    #3.记录状态
+    eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
+    #3.记录状态为字典
     record_state={}
-    record_state["oven_temp"] = eng.get_param(f"{model_name}/InnerWallsofOven", 'T')
-    record_state["oven_temp"] = eng.get_param(f"{model_name}/Dynamic_Thermal_Mass", 'T')
-    record_state["food_temp"] = eng.get_param(f"{model_name}/foodstuff", 'T')
-    #这两个改了但没测试
-    record_state["water_content"] = eng.get_param(f"{model_name}/water_contentd_display", 'Value')
-    record_state["humidity"] = eng.get_param(f"{model_name}/humidity_display", 'Value')
+    record_state["oven_wall_temp"] = str(eng.workspace['wall_temp'])
+    record_state["oven_air_temp"] = str(eng.workspace['air_temp'])
+    record_state["food_temp"] = str(eng.workspace['food_temp'])
+    record_state["water_content"] = str(eng.workspace['water_content'])
+    record_state["humidity"] = str(eng.workspace['humidity'])
     record_state["fan_speed"] = eng.get_param(f"{model_name}/fan_speed", 'Value')
     record_state["heat_resistor_temp"] = eng.get_param(f"{model_name}/oven_temp1", 'Value')
-    record_state["heat_resistor_temp"] = eng.get_param(f"{model_name}/oven_temp2", 'Value')
+    
+    return record_state
 
-
-def stop_simulation_and_get_data(eng, model_name):
-    """停止仿真并关闭MATLAB引擎"""
-
-    # 等待仿真停止
+def simulation_is_finished(eng,model_name):
+    #判断仿真是否结束
     while True:
-        status = eng.get_param(model_name, 'SimulationStatus')
-        if status == 'stopped':           
-            break
-        time.sleep(1)  # 等待 1 秒后再次检查    
-    eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
-    time_points=eng.workspace['time_points']
-    values=eng.workspace['values']
-    #每60秒取样一次
-    reduced_time_points = time_points[::60]
-    reduced_values = values[::60]
-    #将数组转换为长字符串for LLM
-    time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
-    # print(time_temp_str)
-    input("Press Enter to end the simulation and close MATLAB...")
-    eng.quit()
+            status = eng.get_param(model_name, 'SimulationStatus')
+            if status == 'stopped': 
+                isFinished=True          
+                break
+            isFinished=False
+            time.sleep(1) 
+    return isFinished 
+
+def get_reference_data(eng,model_name):
+    if simulation_is_finished(eng,model_name):
+        eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
+        time_points=eng.workspace['time_points']
+        values=eng.workspace['values']
+        #每60秒取样一次
+        reduced_time_points = time_points[::60]
+        reduced_values = values[::60]
+        #将数组转换为长字符串for LLM
+        time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
     return time_temp_str
 
+def quit_matlab_engine(eng):
+    eng.quit()
+
 #================================================================================下面是几个总函数
-def simulate(model_name,matlab_file,text):
+def reference_simulate(eng,model_name,text):
     #根据GPT生成方案，跑一遍仿真并记录曲线
     param_dict = create_param_dict_from_LLM_answer(text)
     if param_dict:
-        eng = start_matlab_engine()
-        load_simulink_model(eng, model_name)
-        run_matlab_file(eng, matlab_file)
-        set_parameters(eng, model_name, param_dict)
-        run_simulation(eng, model_name, param_dict)
-        return stop_simulation_and_get_data(eng, model_name)
+        set_complete_parameters(eng, model_name, param_dict)
+        run_model_to_get_reference(eng, model_name, param_dict)
+        return get_reference_data(eng,model_name)
     
-# def simulate_one_minute(model_name,matlab_file,LLM_generated_text,param_dict):可以直接在LLM_adjust里面写
-#     #跑一分钟仿真，用来模拟真实情形
-#     eng = start_matlab_engine()
-#     load_simulink_model(eng, model_name)
-#     # run_matlab_file(eng, matlab_file)
-#     run_simulation_for_one_minute()
-#     set_parameters(eng, model_name, param_dict)
-
-#     return stop_simulation_and_get_data(eng, model_name)
+def real_simulate_one_minute(eng,model_name,param_dict):
+    #跑一分钟仿真，用来模拟真实情形
+    state_param=run_model_for_one_minute(eng,model_name,param_dict)
+    return state_param
         
 def main():
     #理论上不调用
@@ -216,7 +215,34 @@ def main():
     }
     This plan ensures that the chicken is cooked thoroughly with a crispy skin and juicy interior. Adjustments can be made based on specific oven performance and preferences.
     """
-    simulate(model_name,matlab_file,text)
+    eng=matlab_initialization(model_name,matlab_file)
+    print(reference_simulate(eng,model_name,text))
+    quit_matlab_engine(eng)
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+# def stop_simulation_and_get_data(eng, model_name):
+#     """停止仿真并关闭MATLAB引擎"""
+#     # 等待仿真停止
+#     while True:
+#         status = eng.get_param(model_name, 'SimulationStatus')
+#         if status == 'stopped':           
+#             break
+#         time.sleep(1)    
+#     eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
+#     time_points=eng.workspace['time_points']
+#     values=eng.workspace['values']
+#     #每60秒取样一次
+#     reduced_time_points = time_points[::60]
+#     reduced_values = values[::60]
+#     #将数组转换为长字符串for LLM
+#     time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
+#     # print(time_temp_str)
+#     # input("Press Enter to end the simulation and close MATLAB...")
+#     eng.quit()
+#     return time_temp_str
