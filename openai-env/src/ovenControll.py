@@ -222,27 +222,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-
-
-# def stop_simulation_and_get_data(eng, model_name):
-#     """停止仿真并关闭MATLAB引擎"""
-#     # 等待仿真停止
-#     while True:
-#         status = eng.get_param(model_name, 'SimulationStatus')
-#         if status == 'stopped':           
-#             break
-#         time.sleep(1)    
-#     eng.run('move_outputs_to_workspace.m',nargout=0)#从workspace取出仿真输出
-#     time_points=eng.workspace['time_points']
-#     values=eng.workspace['values']
-#     #每60秒取样一次
-#     reduced_time_points = time_points[::60]
-#     reduced_values = values[::60]
-#     #将数组转换为长字符串for LLM
-#     time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
-#     # print(time_temp_str)
-#     # input("Press Enter to end the simulation and close MATLAB...")
-#     eng.quit()
-#     return time_temp_str
