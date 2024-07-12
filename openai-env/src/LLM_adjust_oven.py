@@ -148,6 +148,7 @@ def call_LLM_is_finished(time_temp_data,referenced_data):
     #判断是否已经完成
     #根据的数据：reference_data, 现在总共烤的time_temp, 烤的食物种类，用户的个人偏好
     #【需要在Prompt里面约定在{}里面放入yes or no】
+    prompt=''
     response= call_GPT_for_text_analysis.call(prompt)
     print(f"\nThis is the raw response of telling if the food is ready: '{response}'\n")
     #匹配
