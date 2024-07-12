@@ -9,7 +9,7 @@ def call(prompt):
     model=MODEL,
     messages=[
       {"role": "system", "content": prompt[0]}, # <-- This is the system message that provides context to the model
-      {"role": "user", "content": [prompt[1]]}  # <-- This is the user message for which the model will generate a response
+      {"role": "user", "content": prompt[1]}  # <-- This is the user message for which the model will generate a response
     ]
   )
 

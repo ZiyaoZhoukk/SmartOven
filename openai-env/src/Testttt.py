@@ -17,3 +17,45 @@ if response.status_code == 200:
     print(json_content)
 else:
     print(f"Request failed with status code {response.status_code}: {response.text}")
+    
+    
+prompt = (
+    """You are an AI designed to monitor and optimise the baking process in an oven. 
+    Your task is to evaluate whether the current oven settings—temperature and fan speed—
+    are appropriate for the type of food being baked. You need to consider that the default 
+    assumptions about the food's properties (initial temperature, weight, heat capacity, surface area, 
+    water content) might not be accurate and adjustments might be necessary during the baking process.
+
+    Here are the key parameters for your assessment:
+    1. Type of Food: """ + text_food_type + """
+    2. Referenced Data: This is a time-temperature sequence representing the common temperature progression 
+    of the food being baked:\n""" + text_referenced_data + """
+    Note: The data is recorded every 60 seconds. Time units are in seconds, temperature units are in degrees Celsius. 
+    Pay attention to the rate of temperature rise, this may imply that the best way to cook this food is to let its 
+    temperature rise in this rate. 
+
+    3. Referenced Oven Setting:\n""" + text_referenced_oven_setting + """
+    Note: Time units are in seconds. Temperature is in degrees Celsius. Fan speed is in rotations per minute (r/min).
+
+    4. Current Temperature Sequence During Baking: This sequence represents the food's temperature at each minute 
+    of baking so far.(The initial temperature is """ + text_inital_temp + """, now the baking process has been 
+    """ + text_baking_time + """ min.)\n""" + text_time_temp + """
+    Note: The sequence is incomplete as the baking process is still ongoing. 
+
+    5. Current Oven Settings:\n""" + text_current_oven_setting + """
+    Decision Required: Based on the comparison between the current temperature sequence and the referenced data, 
+    and considering the current oven settings, determine whether the current settings are appropriate.
+    Provide your final decision in the following format:
+    {yes} if the current settings are acceptable and no adjustments are needed.
+    {no} if the current settings are not acceptable and adjustments are necessary.
+
+    Additionally, if your decision was no, specify which of the food properties (initial temperature, weight, heat capacity, 
+    surface area, water content) were incorrectly estimated to cause the discrepancy. Provide them in the following format:
+    [REASON]your answer here[/REASON]
+    If your decision was yes, even if you think some food properties were estimated incorrectly, do not give the "reason" 
+    or mention anything.
+    Limit your output to FIVE LINES."""
+)
+
+print(f"\nThis is the combined prompt:\n{prompt}\n=========\n")
+response = call_GPT_for_text_analysis.call(prompt)
