@@ -3,10 +3,10 @@ import re
 import json
 import time
 
-def create_param_dict_from_LLM_answer(text):
+def create_param_dict_from_LLM_answer(GPT_pic_recog_result_text):
     """从文本中提取并解析JSON部分"""
     # 使用正则表达式提取JSON部分
-    json_match = re.search(r'(\{(?:[^\{\}]*\n){8,}[^\{\}]*\})', text)
+    json_match = re.search(r'(\{(?:[^\{\}]*\n){8,}[^\{\}]*\})', GPT_pic_recog_result_text)
 
     if json_match:
         json_str = json_match.group(0)
@@ -45,30 +45,30 @@ def matlab_initialization(model_name,matlab_file):
     run_matlab_file(eng,matlab_file)
     return eng
 
-def set_complete_parameters(eng, model_name, param_dict):
+def set_complete_parameters(eng, model_name, referenced_param_dict):
     """设置模型参数"""
     print("======= Setting parameters from JSON... =======\n")
     # 设置烤箱温度
-    eng.set_param(f"{model_name}/oven_temp1", 'Value', param_dict["first_period_temp"], nargout=0)
-    eng.set_param(f"{model_name}/oven_temp2", 'Value', param_dict["first_period_temp"], nargout=0)
-    eng.set_param(f"{model_name}/InnerWallsofOven", 'T', param_dict["first_period_temp"], nargout=0)
-    eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', param_dict["first_period_temp"], nargout=0)
+    eng.set_param(f"{model_name}/oven_temp1", 'Value', referenced_param_dict["first_period_temp"], nargout=0)
+    eng.set_param(f"{model_name}/oven_temp2", 'Value', referenced_param_dict["first_period_temp"], nargout=0)
+    eng.set_param(f"{model_name}/InnerWallsofOven", 'T', referenced_param_dict["first_period_temp"], nargout=0)
+    eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', referenced_param_dict["first_period_temp"], nargout=0)
     
     # 设置烤箱风扇速度
-    eng.set_param(f"{model_name}/fan_speed", 'Value', param_dict["first_period_fan_speed"], nargout=0)
+    eng.set_param(f"{model_name}/fan_speed", 'Value', referenced_param_dict["first_period_fan_speed"], nargout=0)
     
     # 设置食物初始状态
-    eng.set_param(f"{model_name}/foodstuff", 'sp_heat', param_dict["heat_capacity"], nargout=0)
-    eng.set_param(f"{model_name}/foodstuff", 'mass', param_dict["m"], nargout=0)
-    eng.set_param(f"{model_name}/foodstuff", 'T', param_dict["initial_temp"], nargout=0)
-    eng.set_param(f"{model_name}/A_food", 'Gain', param_dict["A"], nargout=0)
-    eng.set_param(f"{model_name}/Convective_Heat_Transfer1", 'Area', param_dict["A"], nargout=0)
-    eng.set_param(f"{model_name}/initial_water_content", 'Value', param_dict["water_content"], nargout=0)
+    eng.set_param(f"{model_name}/foodstuff", 'sp_heat', referenced_param_dict["heat_capacity"], nargout=0)
+    eng.set_param(f"{model_name}/foodstuff", 'mass', referenced_param_dict["m"], nargout=0)
+    eng.set_param(f"{model_name}/foodstuff", 'T', referenced_param_dict["initial_temp"], nargout=0)
+    eng.set_param(f"{model_name}/A_food", 'Gain', referenced_param_dict["A"], nargout=0)
+    eng.set_param(f"{model_name}/Convective_Heat_Transfer1", 'Area', referenced_param_dict["A"], nargout=0)
+    eng.set_param(f"{model_name}/initial_water_content", 'Value', referenced_param_dict["water_content"], nargout=0)
 
-def run_model_to_get_reference(eng, model_name, param_dict):
+def run_model_to_get_reference(eng, model_name, referenced_param_dict):
     """运行仿真并根据时间点修改参数"""
-    change_time = float(param_dict["first_period"])
-    stop_time = str(float(param_dict["first_period"]) + float(param_dict["second_period"]))
+    change_time = float(referenced_param_dict["first_period"])
+    stop_time = str(float(referenced_param_dict["first_period"]) + float(referenced_param_dict["second_period"]))
     print(f"\nStop time is: {stop_time}\n")
 
     # 启动仿真
@@ -86,9 +86,9 @@ def run_model_to_get_reference(eng, model_name, param_dict):
             print(f'Current simulation time: {sim_time:.2f} seconds, parameter has been modified.')
 
             # 设置烤箱目标温度
-            eng.set_param(f"{model_name}/oven_temp1", 'Value', param_dict["second_period_temp"], nargout=0)
-            eng.set_param(f"{model_name}/oven_temp2", 'Value', param_dict["second_period_temp"], nargout=0)
-            eng.set_param(f"{model_name}/fan_speed", 'Value', param_dict["second_period_fan_speed"], nargout=0)
+            eng.set_param(f"{model_name}/oven_temp1", 'Value', referenced_param_dict["second_period_temp"], nargout=0)
+            eng.set_param(f"{model_name}/oven_temp2", 'Value', referenced_param_dict["second_period_temp"], nargout=0)
+            eng.set_param(f"{model_name}/fan_speed", 'Value', referenced_param_dict["second_period_fan_speed"], nargout=0)
 
             print('\n=========== Parameters for roasting have been modified! ===========\n')
             break
@@ -96,21 +96,21 @@ def run_model_to_get_reference(eng, model_name, param_dict):
         # 短暂暂停以防止系统高使用率
         time.sleep(0.05)
 
-def run_model_for_one_minute(eng, model_name, state_param_dict):
+def run_model_for_one_minute(eng, model_name, real_param_or_state_dict):
     #1.应用状态并改烘烤操作（设置温度和风扇）
-    if len(state_param_dict)<8:
+    if len(real_param_or_state_dict)<8:
         #应用状态
-        eng.set_param(f"{model_name}/InnerWallsofOven", 'T', state_param_dict["oven_wall_temp"], nargout=0)
-        eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', state_param_dict["oven_air_temp"], nargout=0)
-        eng.set_param(f"{model_name}/foodstuff", 'T', state_param_dict["food_temp"], nargout=0)
-        eng.set_param(f"{model_name}/initial_water_content", 'Value', state_param_dict["water_content"], nargout=0)
-        eng.set_param(f"{model_name}/initial_humidity", 'Value', state_param_dict["humidity"], nargout=0)
+        eng.set_param(f"{model_name}/InnerWallsofOven", 'T', real_param_or_state_dict["oven_wall_temp"], nargout=0)
+        eng.set_param(f"{model_name}/Dynamic_Thermal_Mass", 'T', real_param_or_state_dict["oven_air_temp"], nargout=0)
+        eng.set_param(f"{model_name}/foodstuff", 'T', real_param_or_state_dict["food_temp"], nargout=0)
+        eng.set_param(f"{model_name}/initial_water_content", 'Value', real_param_or_state_dict["water_content"], nargout=0)
+        eng.set_param(f"{model_name}/initial_humidity", 'Value', real_param_or_state_dict["humidity"], nargout=0)
         #更改烘烤操作
-        eng.set_param(f"{model_name}/fan_speed", 'Value', state_param_dict["fan_speed"], nargout=0)
-        eng.set_param(f"{model_name}/oven_temp1", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
-        eng.set_param(f"{model_name}/oven_temp2", 'Value', state_param_dict["heat_resistor_temp"], nargout=0)
-    if len(state_param_dict)>=8:#第一次一分钟
-        set_complete_parameters(eng,model_name,state_param_dict)   
+        eng.set_param(f"{model_name}/fan_speed", 'Value', real_param_or_state_dict["fan_speed"], nargout=0)
+        eng.set_param(f"{model_name}/oven_temp1", 'Value', real_param_or_state_dict["heat_resistor_temp"], nargout=0)
+        eng.set_param(f"{model_name}/oven_temp2", 'Value', real_param_or_state_dict["heat_resistor_temp"], nargout=0)
+    if len(real_param_or_state_dict)>=8:#第一次一分钟
+        set_complete_parameters(eng,model_name,real_param_or_state_dict)   
     #2.跑一分钟
     eng.set_param(model_name, 'StartTime', '0', 'StopTime', "60", nargout=0)
     eng.set_param(model_name, 'SimulationCommand', 'start', nargout=0)
@@ -154,17 +154,17 @@ def quit_matlab_engine(eng):
     eng.quit()
 
 #================================================================================下面是几个总函数
-def reference_simulate(eng,model_name,text):
+def reference_simulate(eng,model_name,GTP_pic_recog_result_text):
     #根据GPT生成方案，跑一遍仿真并记录曲线
-    param_dict = create_param_dict_from_LLM_answer(text)
+    param_dict = create_param_dict_from_LLM_answer(GTP_pic_recog_result_text)
     if param_dict:
         set_complete_parameters(eng, model_name, param_dict)
         run_model_to_get_reference(eng, model_name, param_dict)
         return get_reference_data(eng,model_name)
     
-def real_simulate_one_minute(eng,model_name,param_dict):
+def real_simulate_one_minute(eng,model_name,real_param_or_state_dict):
     #跑一分钟仿真，用来模拟真实情形
-    state_param=run_model_for_one_minute(eng,model_name,param_dict)
+    state_param=run_model_for_one_minute(eng,model_name,real_param_or_state_dict)
     return state_param
         
 def main():
