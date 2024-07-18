@@ -63,18 +63,30 @@ Here are the key parameters for your assessment:
 
 5. Current Oven Settings:\n"""+text_current_oven_setting+"""\nDecision Required: Based on the comparison between the current temperature sequence and the referenced data, and considering the current oven settings, determine whether the current settings are appropriate.
 Provide your final decision in the following format:
+
+Your Task:
+1. Based on the comparison between the current temperature sequence and the referenced data, and considering the current oven settings, determine whether the current settings are appropriate.
+Provide your final decision in the following format:
 {yes} if the current settings are acceptable and no adjustments are needed.
 {no} if the current settings are not acceptable and adjustments are necessary.
 
-Additionally, if your decision was no, specify which of the food properties (initial temperature, weight, heat capacity, surface area, water content) were incorrectly estimated to cause the discrepancy. Provide them in the following format (only use this format once in your output):
-[REASON]your answer here[/REASON]
-If your decision was yes, even if you think some food properties were estimated incorrectly, do not give the "reason" or mention anything.
-Limit your output to FIVE LINES."""
+2. If your decision was no, specify which of the food properties (initial temperature, weight, heat capacity, surface area, water content) were incorrectly estimated to cause the discrepancy. Provide them within the [REASON][/REASON] tags.
+
+Output Format (Do not output anything other than the following):
+[DECISION]
+<your decision>
+[/DECISION]
+
+[REASON]
+<which of the food properties that you think are incorrectly estimated>
+[/REASON]
+"""
+
     prompt=("You are an AI designed to monitor and optimise the baking process in an oven.",prompt_second_part)
     # print(f"\nThis is the combined prompt:\n{prompt[1]}\n========\n")
     response=call_GPT_for_text_analysis.call(prompt)
-    print("\n---------error check...----------")
-    print(f"This is the raw response about if the error is negligible: \n======\n{response}'\n========\n")
+    print("\n---------error check----------")
+    print(f"This is the raw response about if the error is negligible: \n======\n{response}\n========\n")
     #在response(格式就是字符串)中匹配yes or no并输出
     match = re.search(r'\{(yes|no)\}', response)  
     if match:
@@ -90,7 +102,7 @@ Limit your output to FIVE LINES."""
         yesORno=False
         print("CHECK RESULT: !!!Need a change of temperature or fan speed")
         pattern = r'\[REASON\](.*?)\[/REASON\]'
-        match = re.search(pattern, response)
+        match = re.search(pattern, response,re.DOTALL)
         if match:
             reason = match.group(1)
         else:
@@ -127,7 +139,7 @@ def call_LLM_generate_controll_instruction(reason_text,current_time_temp_list,te
 
 Context:
 1. Background:
-The {reason_text} of the food being baked were incorrectly estimated. Therefore, it is crucial to adjust the oven settings to achieve better baking results.
+Some of the properties of the food being baked were incorrectly estimated. Therefore, it is crucial to adjust the oven settings to achieve better baking results. Here are the information about the wrong properties: {reason_text} 
 
 2. Type of Food: {text_food_type}
 
@@ -164,23 +176,25 @@ Output Format (Do not output anything other than the following):
 [/CONSEQUENCE]
 """
     prompt=('You are an AI trained to adjust the oven temperature and fan speed to make the baking process better!',prompt_second_part)
+    print(f"\n---------------gernerating control data and potential consequences---------------\n")
     response=call_GPT_for_text_analysis.call(prompt)
     print(f"This is the raw response about the operation and consequences: \n=======\n{response}\n=======\n")
 
     # 提取 CONTROL 内容【json,温度=xx，风扇=xx】
     control_pattern = r'\[CONTROL\](.*?)\[/CONTROL\]'
-    match = re.search(control_pattern, response)  
+    match = re.search(control_pattern, response, re.DOTALL)  
     if match:
         control_content = match.group(1)
         control_data = json.loads(control_content)
     else:
         print("ERROR OCCURED: FAILED TO MATCH CONTROL INFOS")
-        control_data = {["oven_temp"]:"220",["fan_speed"]:"1500"}
+        control_data = {}
+        control_data={["oven_temp"]:"220",["fan_speed"]:"1500"}
             
     
     # 提取 CONSEQUENCE 内容
     consequence_pattern = r'\[CONSEQUENCE\](.*?)\[/CONSEQUENCE\]'        
-    match = re.search(consequence_pattern, response)
+    match = re.search(consequence_pattern, response,re.DOTALL)
     if match:
         consequence_content = match.group(1)   
     else:
@@ -189,8 +203,8 @@ Output Format (Do not output anything other than the following):
     return control_data,consequence_content
 
 def apply_control_data_to_state(control_data_dict,state_dict):
-    state_dict["heat_resistor_temp"]=control_data_dict["oven_temp"]
-    state_dict["fan_speed"]=control_data_dict["fan_speed"]
+    state_dict["heat_resistor_temp"]=str(control_data_dict["oven_temp"])
+    state_dict["fan_speed"]=str(control_data_dict["fan_speed"])
     new_state_dict=state_dict
     return new_state_dict
 
@@ -377,15 +391,22 @@ if __name__ == "__main__":
         if not is_finished(current_time_temp_list, referenced_data,time):
             is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict)
             if not is_negligible:
-                #发生偏移，需要操作
+                #发生偏移，生成操作和后果
                 control_data_dict,consequences=call_LLM_generate_controll_instruction(reason,current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict)
                 send_consequences(consequences,state_dict,control_data_dict)    
                 state_dict=apply_control_data_to_state(control_data_dict,state_dict)
-                print(state_dict)
-            else:
-                #没有偏移，继续烤制
-                state_dict=real_food_properties_list(eng,model_name,state_dict)
+                print(f"new state: {state_dict}")
+                #继续烤制，记录数据
+                state_dict=real_grill_process_one_minute(eng,model_name,state_dict)
                 current_time_temp_list=collect_data(current_time_temp_list,state_dict,real_param_dict)
+                print(f"$$$$$$$$$$$ Temperature data up to now: $$$$$$$$$$\n{current_time_temp_list}\n")
+                time+=1
+            else:
+                #没有偏移，继续烤制，记录数据
+                state_dict=real_grill_process_one_minute(eng,model_name,state_dict)
+                time+=1
+                current_time_temp_list=collect_data(current_time_temp_list,state_dict,real_param_dict)
+                print(f"$$$$$$$$$$$ Temperature data up to now: $$$$$$$$$$\n{current_time_temp_list}\n")
         else:
             #烤制过程结束，打印结果，关闭引擎
             print(f"This is the final temperature data: \n{current_time_temp_list}")
