@@ -3,6 +3,7 @@ import base64
 import os
 from openai import OpenAI 
 import re
+import json
 
 
 # Open the image file and encode it as a base64 string
@@ -37,11 +38,10 @@ def extract_json_content(message_content):
 
 
 
-def main():
+def call(IMAGE_PATH):
     ## Set the API key and model name
     MODEL="gpt-4o"
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    IMAGE_PATH = "/Users/zhouziyao/Desktop/LLM_Smart_Oven_Controll/openai-env/data/chicken.jpeg"
     base64_image = encode_image(IMAGE_PATH)
     # 提示词
     role_system="You are an AI trained to be responsible for planning a food roasting process in an oven (3.5 kW, 60L)."
@@ -69,9 +69,14 @@ def main():
     response=get_response(MODEL,client,role_system,prompt,base64_image)
     print("\n==========Original Response============\n")
     print(response)
-    json=extract_json_content(response)
+    json_text=extract_json_content(response)
     print("\n==========Generated Roasting Plan JSON============\n")
-    print(json)
+    print(json_text)
+    json_param=json.loads(json_text)
+    return json_param
+
+def main():
+    return
 
 if __name__ == "__main__":
     main()

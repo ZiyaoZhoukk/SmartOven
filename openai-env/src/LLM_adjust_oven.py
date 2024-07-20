@@ -29,7 +29,7 @@ def real_grill_process_one_minute(eng,model_name,state_dict):
     state_after_sim=ovenControll.real_simulate_one_minute(eng,model_name,state_dict)
     return state_after_sim
 
-def call_LLM_is_negligible_error_and_give_reason(current_time_temp_list,text_referenced_data,referenced_param_dict,state_dict):
+def call_LLM_is_negligible_error_and_give_reason(current_time_temp_list,text_referenced_data,referenced_param_dict,state_dict,preference):
     # 【Prompt里面要约定用{}来表明yes or no】
     text_food_type=str(referenced_param_dict["type of food"])
     
@@ -62,6 +62,8 @@ Here are the key parameters for your assessment:
 4. Current Temperature Sequence During Baking: This sequence represents the food's temperature at each minute of baking so far.(The initial temperature is """+text_inital_temp+""", now the baking process has been """+text_baking_time+""" min.)\n"""+text_time_temp+"""\nNote: The sequence is incomplete as the baking process is still ongoing. 
 
 5. Current Oven Settings:\n"""+text_current_oven_setting+"""\nDecision Required: Based on the comparison between the current temperature sequence and the referenced data, and considering the current oven settings, determine whether the current settings are appropriate.
+
+6. User preference:\n"""+preference+"""\n
 Provide your final decision in the following format:
 
 Your Task:
@@ -110,7 +112,7 @@ Output Format (Do not output anything other than the following):
             print("ERROR OCURRED: FAILED TO MATCH REASON IN RESPONSE.")
     return yesORno,reason
 
-def call_LLM_generate_controll_instruction(reason_text,current_time_temp_list,text_referenced_data,referenced_param_dict,state_dict):
+def call_LLM_generate_controll_instruction(reason_text,current_time_temp_list,text_referenced_data,referenced_param_dict,state_dict,preference):
     #只需要知道下一分钟是什么参数烤,还要返回可能造成的影响（时间上）
     # 【prompt里面要约定用控制符[CONTROL]...[/CONTROL]以及json的格式来表示操作,用[CONSEQUENSE]...[CONSEQUENCE]来表示预测的
     text_food_type=str(referenced_param_dict["type of food"])
@@ -158,10 +160,14 @@ Note: This sequence represents the food's temperature at each minute of baking s
 6. Current Oven Settings:
 {text_current_oven_setting}
 
+7. User Preference:
+{preference}
+
 Your Task:
 Based on the above data, determine the new oven temperature and fan speed settings to better align with the optimal baking conditions.
 Present the new settings in JSON format within the [CONTROL][/CONTROL] tags.
 Clearly state the consequences of the adjustments within the [CONSEQUENCE][/CONSEQUENCE] tags.(For example, the consequence can be that the adjustment may change the time of the whole baking time.)
+Estimate the time to finish baking in minutes between the curly brackets within the [TIMETOFINISH][/TIMETOFINISH] tags. 
 
 Output Format (Do not output anything other than the following):
 [CONTROL]
@@ -174,6 +180,11 @@ Output Format (Do not output anything other than the following):
 [CONSEQUENCE]
 <what you think will happen>
 [/CONSEQUENCE]
+
+[TIMETOFINISH]
+<estimated time to finish baking in minutes>
+[/TIMETOFINISH]
+
 """
     prompt=('You are an AI trained to adjust the oven temperature and fan speed to make the baking process better!',prompt_second_part)
     print(f"\n---------------gernerating control data and potential consequences---------------\n")
@@ -199,8 +210,17 @@ Output Format (Do not output anything other than the following):
         consequence_content = match.group(1)   
     else:
         print("ERROR OCCURED: FAILED TO MATCH CONSEQUENCES INFOS")
-        consequence_content='NO CONSEQUENCE'        
-    return control_data,consequence_content
+        consequence_content='NO CONSEQUENCE'       
+        
+    # 提取 TIMETOFINISH 内容
+    time_pattern = r'\[TIMETOFINISH\](.*?)\[/TIMETOFINISH\]'        
+    match = re.search(consequence_pattern, response,re.DOTALL)
+    if match:
+        time_content = match.group(1)   
+    else:
+        print("ERROR OCCURED: FAILED TO MATCH ESTIMATED TIME INFOS")
+        time_content='NaaN'     
+    return control_data,consequence_content,time_content
 
 def apply_control_data_to_state(control_data_dict,state_dict):
     state_dict["heat_resistor_temp"]=str(control_data_dict["oven_temp"])
@@ -301,12 +321,12 @@ def main():
     #循环烘烤--------等Prompt全部写好，要重新写
     while True:
         if time<1:
-            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(data,referenced_data,referenced_param_dict,real_param_dict)
+            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(data,referenced_data,referenced_param_dict,real_param_dict,preference)
         else:
-            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(data,referenced_data,referenced_param_dict,state)
+            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(data,referenced_data,referenced_param_dict,state,preference)
         if not is_finished(data,referenced_data):
             if not is_negligible:
-                control_data,consequences=call_LLM_generate_controll_instruction(reason,state,referenced_data)
+                control_data,consequences=call_LLM_generate_controll_instruction(reason,state,referenced_data,preference)
                 send_consequences(consequences)     
                 state=apply_operation_to_state(control_data,state)
                 state=real_grill_process_one_minute(eng,model_name,state)
@@ -374,6 +394,7 @@ if __name__ == "__main__":
     """
     real_food_properties_list='3000','2','80','20','0.2'#假设真实烤鸡的properties是这样
     current_time_temp_list=[]
+    preference=""
     real_param_dict,referenced_param_dict=combine_real_food_params_and_LLM_generated_grill_process(Exm_reference_grill_instruction,real_food_properties_list)
     print (f"This is the param_dict combining REAL food properties and GPT_generated grill setting:\n{real_param_dict}\n")
     
@@ -389,10 +410,10 @@ if __name__ == "__main__":
     #从第二分钟开始循环烤制过程
     while True:
         if not is_finished(current_time_temp_list, referenced_data,time):
-            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict)
+            is_negligible,reason=call_LLM_is_negligible_error_and_give_reason(current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict,preference)
             if not is_negligible:
                 #发生偏移，生成操作和后果
-                control_data_dict,consequences=call_LLM_generate_controll_instruction(reason,current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict)
+                control_data_dict,consequences=call_LLM_generate_controll_instruction(reason,current_time_temp_list,referenced_data,referenced_param_dict,real_param_dict,preference)
                 send_consequences(consequences,state_dict,control_data_dict)    
                 state_dict=apply_control_data_to_state(control_data_dict,state_dict)
                 print(f"new state: {state_dict}")
