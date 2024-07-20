@@ -7,6 +7,7 @@ import time
 import threading
 import LLM_use_pic_to_plan as GPT_plan
 import LLM_adjust_oven as GPT_control
+import sys
 
 # 定义上传图片功能
 def upload_photo():
