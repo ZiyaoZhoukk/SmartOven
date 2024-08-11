@@ -90,9 +90,9 @@ Output Format (Do not output anything other than the following):
     print("\n---------error check----------")
     print(f"This is the raw response about if the error is negligible: \n======\n{response}\n========\n")
     #在response(格式就是字符串)中匹配yes or no并输出
-    match = re.search(r'\{(yes|no)\}', response)  
+    match = re.search(r'\[DECISION\].*?\b(yes|no)\b.*?\[/DECISION\]', response, re.IGNORECASE | re.DOTALL) 
     if match:
-        result = match.group(1)
+        result = match.group(1).strip()
     else:
         result='yes'
         print("ERROR OCURRED: FAILED TO MATCH YES OR NO IN RESPONSE.")
@@ -214,7 +214,7 @@ Output Format (Do not output anything other than the following):
         
     # 提取 TIMETOFINISH 内容
     time_pattern = r'\[TIMETOFINISH\](.*?)\[/TIMETOFINISH\]'        
-    match = re.search(consequence_pattern, response,re.DOTALL)
+    match = re.search(time_pattern, response,re.DOTALL)
     if match:
         time_content = match.group(1)   
     else:
@@ -343,7 +343,7 @@ def main():
         
 
 if __name__ == "__main__":
-    #测试call_LLM_is_negligible_error_and_give_reason
+    ##版本有些过时，generate control data应该返回了第三个值AKA time left
     model_name = 'OvenSim'
     matlab_file = 'ovenSimConfig.m'
     time=0 #To get the time that the baking process has started

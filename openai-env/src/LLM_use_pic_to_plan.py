@@ -73,7 +73,7 @@ def call(IMAGE_PATH):
     print("\n==========Generated Roasting Plan JSON============\n")
     print(json_text)
     json_param=json.loads(json_text)
-    return json_param
+    return response, json_param
 
 def main():
     return

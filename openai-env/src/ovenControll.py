@@ -2,6 +2,7 @@ import matlab.engine
 import re
 import json
 import time
+import numpy as np
 
 def create_param_dict_from_LLM_answer(GPT_pic_recog_result_text):
     """从文本中提取并解析JSON部分"""
@@ -146,9 +147,12 @@ def get_reference_data(eng,model_name):
         #每60秒取样一次
         reduced_time_points = time_points[::60]
         reduced_values = values[::60]
+        reduced_values_list=np.array(reduced_values).astype(float).tolist()
+        reduced_values_list=[item[0] for item in reduced_values_list]
+        print(f"\nHere is the converted matlab time-temp data list: {reduced_values_list}\n")
         #将数组转换为长字符串for LLM
         time_temp_str = ', '.join(f"{tp}:{val}" for tp, val in zip(reduced_time_points, reduced_values))
-    return time_temp_str
+    return time_temp_str,reduced_values_list
 
 def quit_matlab_engine(eng):
     eng.quit()
